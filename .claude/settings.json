@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(meson setup*)",
+      "Bash(meson compile -C .build)",
+      "Bash(meson test*)",
+      "Bash(ninja -C .build)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git status*)",
+      "Bash(./scripts/build.sh*)"
+    ]
+  }
+}
