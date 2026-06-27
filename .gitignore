@@ -6,8 +6,12 @@ CLAUDE.local.md
 .claude/memory/
 .claude/todos/
 
+# NVMe specification PDFs (large files, download from nvmexpress.org)
+.claude/skills/nvme-spec/specs/*.pdf
+
 # Claude Code - the following are intentionally NOT ignored (shared with team)
 # CLAUDE.md
 # .claude/settings.json
 # .claude/commands/
 # .claude/rules/
+# .claude/skills/
