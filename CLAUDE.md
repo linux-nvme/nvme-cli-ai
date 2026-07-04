@@ -31,6 +31,7 @@ CLAUDE.md               This file — loaded automatically by Claude Code
   rules/                Project-specific rules loaded by Claude Code
     accessor-workflow.md
     api-naming.md
+    coding-style.md
     commit-messages.md
     git-workflow.md
     license-headers.md
