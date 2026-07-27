@@ -43,6 +43,10 @@ Before writing a small utility, grep for one — nvme-cli/libnvme already has mo
 - **Keep comment style consistent within a file.** Use `//` for short, single-line, and trailing comments; reserve `/* … */` for multi-line block comments. Don't mix the two arbitrarily in the same file.
 - **Document *why*, not *what*.** A comment that restates the code goes stale and adds noise. In particular, do **not** enumerate a function's callers or "used by X, Y, Z" in its doc comment — that's exactly what `grep` is for, and it rots the moment a caller is added or removed. Explain non-obvious rationale (why a protocol is correct, why an ordering matters) instead.
 - **Don't duplicate a comment that already lives at the definition** (e.g. re-explaining a `#define`'s meaning at each use site).
+- **Write in technical style.** Use short, simple sentences and precise language. Follow man page conventions. Avoid idioms, metaphors, and complex sentence structures that are hard to understand for non-native speakers.
+- **No redundant comments.** Do not comment what the code already states clearly. `a = b + 1; /* assign a b plus one */` is noise, not documentation.
+- **No reasoning prose.** Do not add explanatory paragraphs that justify a design or walk through logic step by step. State the fact; omit the justification.
+- **Comment only what needs it.** Well-written code with good names does not need comments. Document high-level concepts and code that is genuinely hard to understand. If a comment is needed to explain a name or a simple expression, rename or rewrite the code instead.
 
 ## Naming — match the existing spelling for each parameter
 

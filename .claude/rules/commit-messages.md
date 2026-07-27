@@ -17,9 +17,13 @@ Signed-off-by: Full Name <email@example.com>
 - **Subject prefix**: use the subsystem or file being changed
   (`libnvme`, `nvme`, `fabrics`, `plugins/ocp`, `doc`, `tests`, …).
 - **Summary line**: imperative mood, lowercase after the colon, no trailing
-  period, ≤ 72 characters total.
+  period, ≤ 72 characters total. Use short, simple sentences and precise
+  language. Follow man page conventions. Avoid idioms and complex sentence
+  structures that are hard to understand for non-native speakers.
 - **Body**: explain *why*, not *how*. The diff already shows the how.
-  Omit if the summary is self-explanatory for a trivial fix.
+  Omit if the summary is self-explanatory for a trivial fix. Apply the
+  same technical writing style as the summary: short sentences, precise
+  language, no reasoning prose.
 - **Signed-off-by**: required on every commit per the Linux kernel DCO.
   Use the author's real name and email.
 - **No tool-attribution trailers**: do *not* add `Assisted-by:` (or any
