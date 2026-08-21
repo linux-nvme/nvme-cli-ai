@@ -267,6 +267,13 @@ Spec: NVMe Base Spec 2.3, Figure 275
 /nvme-spec audit-commands nvme-cmds.h
 ```
 
+### Auditing a Whole Spec Chapter for Missing Commands
+
+This guide verifies a command you already believe exists. To instead sweep
+an entire spec chapter/section for commands, Log Page IDs, Feature IDs, or
+CNS values that are missing entirely (not just field-level correctness), see
+[GAP-ANALYSIS-WORKFLOW.md](GAP-ANALYSIS-WORKFLOW.md).
+
 ---
 
 ## Command Implementation Patterns

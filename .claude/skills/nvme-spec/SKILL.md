@@ -29,6 +29,13 @@ This skill provides three main capabilities:
    - Admin vs I/O command classification
    - See [COMMAND-VERIFICATION.md](COMMAND-VERIFICATION.md) for detailed procedures
 
+4. **Systematic Gap Analysis**: Find what libnvme is *missing* across a whole spec chapter, not just verify one command you already believe exists
+   - Master enum/table completeness (opcodes, Log Page IDs, Feature IDs, CNS values, status codes)
+   - Constructor-existence sweep across every `nvme-cmds-*.h` file
+   - Distinguishing real gaps from deliberate design boundaries (kernel-managed commands, raw protocol tunnels, deferred larger features)
+   - Field-level bit-range and struct-layout verification for what's found
+   - See [GAP-ANALYSIS-WORKFLOW.md](GAP-ANALYSIS-WORKFLOW.md) for the full method
+
 **Common use cases:**
 - `/nvme-spec check nvme_id_ctrl` - Check if struct is complete and matches spec
 - `/nvme-spec verify nvme_lbaf` - Verify struct against spec definition
@@ -36,6 +43,7 @@ This skill provides three main capabilities:
 - `/nvme-spec verify-file nvme-types-zns.h` - Batch verify all types in a file (includes naming audit)
 - `/nvme-spec verify-command identify` - Verify Identify command implementation
 - `/nvme-spec audit-commands nvme-cmds.h` - Audit all command definitions
+- `/nvme-spec gap-analysis "Base Spec chapter 5.2"` - Sweep a whole spec chapter/section for missing enums, constructors, and structs
 - `/nvme-spec refactor types` - Get type system refactoring guidance
 
 ## When to Use
@@ -396,6 +404,7 @@ For large PDFs, specify page ranges to avoid loading entire document.
 - **FILE-VERIFICATION-GUIDE.md** - File-level verification quick reference
 - **NAMING-PATTERNS.md** - Naming consistency audit guide (structs, enums, getters/setters)
 - **COMMAND-VERIFICATION.md** - Command implementation verification guide
+- **GAP-ANALYSIS-WORKFLOW.md** - Systematic chapter-by-chapter gap analysis method
 
 ## Notes
 
