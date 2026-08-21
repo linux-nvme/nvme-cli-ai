@@ -306,6 +306,16 @@ See [COMMAND-VERIFICATION.md](COMMAND-VERIFICATION.md) for detailed step-by-step
 
 # 4. Check specific command structure with pahole
 pahole -C nvme_identify .build/libnvme/src/libnvme.so.3
+
+# 5. Build with -Dioctl-tests=true and run the ioctl test suite.
+# ioctl-tests defaults to false, so a plain `meson test` build silently
+# skips libnvme/tests/ioctl/*.c — the tests that exercise constructor
+# functions (nvme_init_get_log_*, etc.) against their call sites. A
+# libnvme API signature change (e.g. adding a parameter) will not be
+# caught as a build failure unless this option is enabled.
+meson setup .build-ioctl -Dioctl-tests=true
+meson compile -C .build-ioctl
+meson test -C .build-ioctl
 ```
 
 ## Tools Used
@@ -414,3 +424,4 @@ For large PDFs, specify page ranges to avoid loading entire document.
 - Reference the spec version in all compliance reports
 - When checking code, always cite the specific spec section and version
 - For multi-version projects, note which spec version the implementation targets
+- **Any libnvme API change (new/changed constructor signature, struct field, enum) must be verified with `-Dioctl-tests=true`.** That option defaults to false, so `libnvme/tests/ioctl/*.c` — which exercises constructors like `nvme_init_get_log_*` against real call sites — is silently skipped by a default build. A signature change with a stale call site will not show up as a build failure otherwise.
