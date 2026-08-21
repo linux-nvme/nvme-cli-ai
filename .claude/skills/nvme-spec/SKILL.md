@@ -405,6 +405,7 @@ For large PDFs, specify page ranges to avoid loading entire document.
 - **NAMING-PATTERNS.md** - Naming consistency audit guide (structs, enums, getters/setters)
 - **COMMAND-VERIFICATION.md** - Command implementation verification guide
 - **GAP-ANALYSIS-WORKFLOW.md** - Systematic chapter-by-chapter gap analysis method
+- **SPEC-COVERAGE.md** - Which spec chapters have been gap-analyzed, when, and what was found — check this before starting a new pass
 
 ## Notes
 
