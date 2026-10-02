@@ -36,6 +36,7 @@ CLAUDE.md               This file — loaded automatically by Claude Code
     commit-messages.md
     git-workflow.md
     license-headers.md
+    windows-cross-build.md
 ```
 
 ### What to commit vs. what to keep local
@@ -302,6 +303,9 @@ cd tests && pytest
 ```
 
 Unit tests live in `unit/` (C). Functional tests live in `tests/` (Python/pytest).
+
+Windows CI builds with `--werror`. To compile-check for Windows from Linux with
+llvm-mingw, see `.claude/rules/windows-cross-build.md`.
 
 ---
 
