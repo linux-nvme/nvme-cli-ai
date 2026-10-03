@@ -43,22 +43,37 @@ be placed in the correct ABI version section by hand.
 intentional and permitted. Add new symbols directly to the existing version
 section (e.g. `LIBNVME_ACCESSORS_3`). Do **not** create a new section.
 
-**After a stable release:** Adding a symbol to an already-published section
-would break binary compatibility. Instead, create a **new** version section
-that chains the previous one:
-```
-LIBNVME_ACCESSORS_3.1 {
-    global:
-        libnvme_ctrl_get_new_field;
-        libnvme_ctrl_set_new_field;
-} LIBNVME_ACCESSORS_3;
-```
+**After a stable release (3.0 and later):** never change or remove an
+existing exported symbol. For a new symbol there are two options:
 
-When the generator detects drift it prints:
+1. Add it to the existing section (e.g. `LIBNVME_ACCESSORS_3`). Simple to
+   maintain. A program that uses the symbol and runs against an older
+   library fails only when the symbol is resolved, not at load time.
+2. Add it to a new section named after the next release, chaining the
+   previous one. The version a program needs is then recorded in the
+   binary. A program that uses only older symbols keeps a lower minimum
+   libnvme version. Packaging tools read these versions too (RPM generates
+   a dependency such as `libnvme.so.1(LIBNVME_3.2)`). The dynamic loader
+   reports a missing version at load time.
+   ```
+   LIBNVME_ACCESSORS_3.2 {
+       global:
+           libnvme_ctrl_get_new_field;
+           libnvme_ctrl_set_new_field;
+   } LIBNVME_ACCESSORS_3;
+   ```
+
+**Do not choose.** Ask the user which option to use before editing any
+`.ld` file, and name the symbols and the release. If a section for the
+next release already exists, ask whether to add to it. The maintainer prefers
+option 1 (PR #4070 review, 2026-09-25).
+
+When the generator detects drift it prints the following. Its suggestion of a
+new section is not a decision: ask the user, as above.
 ```
 WARNING: accessors.ld needs manual attention.
 
-  Symbols to ADD (new version section, e.g. LIBNVME_ACCESSORS_X_Y):
+  Symbols to ADD (new version section, e.g. <PREFIX>_ACCESSORS_X_Y):
     libnvme_ctrl_get_new_field
     libnvme_ctrl_set_new_field
 ```

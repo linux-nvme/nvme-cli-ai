@@ -26,8 +26,9 @@ The split is enforced by two linker version scripts:
 - `libnvme/src/libnvme.ld` — exports `libnvme_*` symbols
 - `libnvme/src/libnvmf.ld` — exports `libnvmf_*` symbols
 
-New public symbols must be added to the appropriate `.ld` file under a new
-version section (see `accessor-workflow.md` for the version-section rules).
+New public symbols are added to the appropriate `.ld` file. Ask the user
+whether they go into the existing version section or a new one (see
+`accessor-workflow.md`, "After a stable release").
 
 ## Internal / private functions
 

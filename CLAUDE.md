@@ -62,7 +62,12 @@ an external dependency, not a git submodule — the complete source lives in
 `libnvme/`). The project is dual-licensed: GPL-2.0-only for the CLI and
 plugins, LGPL-2.1-or-later for libnvme.
 
-Current version: **3.0-a.3** (alpha). Installed to `/usr/local/sbin/nvme` by default.
+Current version: **3.x**. Installed to `/usr/local/sbin/nvme` by default.
+
+**The ABI is stable** since the 3.0 release. Never change or remove
+an existing exported symbol. For a new exported symbol, ask the user whether
+it goes into the existing `_3` section or a new section for the next
+release. See `.claude/rules/accessor-workflow.md`, "After a stable release".
 
 ---
 
