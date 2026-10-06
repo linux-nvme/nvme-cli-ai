@@ -44,15 +44,15 @@ On a function signature that wraps across lines, checkpatch's pointer-spacing he
 
 ## Wrapped `OPT_*` help/description strings — "quoted string split across lines" (`SPLIT_STRING`)
 
-checkpatch's `SPLIT_STRING` check exists so a message that appears verbatim in a kernel log stays one grep'able string instead of being silently reconstructed from concatenated literals at compile time. That rationale is about *runtime log output*, not source text in general. An `OPT_STRING`/`OPT_FLAG` help/description string (e.g. `desc_persistent` in `src/config-create.c`) is never emitted to a log for someone to grep — it only ever reaches `--help` text — so wrapping it across multiple string-literal lines for source readability carries none of the downside the rule exists to prevent. Confirmed by Martin (2026-08-10): `desc_persistent`'s wrapping is fine as-is; the general "never wrap string literals" convention (see `coding-style.md`) is about grep'able runtime messages, not argument help text.
+checkpatch's `SPLIT_STRING` check exists so a message that appears verbatim in a kernel log stays one grep'able string instead of being silently reconstructed from concatenated literals at compile time. That rationale is about *runtime log output*, not source text in general. An `OPT_STRING`/`OPT_FLAG` help/description string (e.g. `desc_persistent` in `src/config-create.c`) is never emitted to a log for someone to grep — it only ever reaches `--help` text — so wrapping it across multiple string-literal lines for source readability carries none of the downside the rule exists to prevent. Confirmed 2026-08-10: `desc_persistent`'s wrapping is fine as-is; the general "never wrap string literals" convention (see `coding-style.md`) is about grep'able runtime messages, not argument help text.
 
 ## `OPT_*` entries in a shared args macro (e.g. `NVMF_ARGS` in `src/fabrics.h`) — line length
 
-Every entry in this macro is already one unwrapped line, column-aligned with its siblings for readability, and already exceeds 80 columns as a block-wide, pre-existing convention — not something a single new/edited entry introduced. Confirmed by Martin (2026-08-17): wrapping just the one or two lines you happen to touch, to satisfy the 80-column check in isolation, breaks that alignment and looks worse than just accepting the warning. Leave `OPT_*` entries in this macro as single lines and accept the `LONG_LINE` warning, matching every sibling entry already there.
+Every entry in this macro is already one unwrapped line, column-aligned with its siblings for readability, and already exceeds 80 columns as a block-wide, pre-existing convention — not something a single new/edited entry introduced. Confirmed 2026-08-17: wrapping just the one or two lines you happen to touch, to satisfy the 80-column check in isolation, breaks that alignment and looks worse than just accepting the warning. Leave `OPT_*` entries in this macro as single lines and accept the `LONG_LINE` warning, matching every sibling entry already there.
 
 ## Rows of a column-aligned table — line length
 
-A static table whose rows are column-aligned (e.g. `keys[]` in `libnvme/src/nvme/config-ini.c`) is easier to read when every row is one line. Keep a new row on one line, aligned with its siblings, even if it goes over 80 columns. Do not wrap it. Confirmed by Martin (2026-09-28) for the `key-source` row. Accept the `LONG_LINE` warning.
+A static table whose rows are column-aligned (e.g. `keys[]` in `libnvme/src/nvme/config-ini.c`) is easier to read when every row is one line. Keep a new row on one line, aligned with its siblings, even if it goes over 80 columns. Do not wrap it. Confirmed 2026-09-28 for the `key-source` row. Accept the `LONG_LINE` warning.
 
 ## `NVME_ARGS_OUTPUT_FORMATS` continuation lines — line length, but NOT indentation
 
@@ -75,7 +75,7 @@ Keep the backslash at column 88. Confirmed 2026-08-28 on PR #3941: this took the
 
 ## `-ENOSYS` from a build-time stub — "ENOSYS means 'invalid syscall nr' and nothing else"
 
-That rule is about kernel syscall dispatch. In userspace, ENOSYS means "not implemented", and glibc's own stubs return it for a feature that was not compiled in. A stub such as `discoverd/src/no-mdns.c` returns `-ENOSYS` so the caller can tell "built without this feature" apart from a runtime `-EOPNOTSUPP`. Confirmed by Martin (2026-09-25, PR #4065). Keep `-ENOSYS` and accept the warning.
+That rule is about kernel syscall dispatch. In userspace, ENOSYS means "not implemented", and glibc's own stubs return it for a feature that was not compiled in. A stub such as `discoverd/src/no-mdns.c` returns `-ENOSYS` so the caller can tell "built without this feature" apart from a runtime `-EOPNOTSUPP`. Confirmed 2026-09-25 on PR #4065. Keep `-ENOSYS` and accept the warning.
 
 ---
 
