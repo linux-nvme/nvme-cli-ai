@@ -8,11 +8,11 @@ This list only applies to **your own** PRs, where you hold yourself to a clean `
 
 ---
 
-## `__cleanup_*` — "Missing a blank line after declarations"
+## `__cleanup_*` — "Missing a blank line after declarations" (filtered)
 
-checkpatch doesn't recognize `__cleanup_free`, `__cleanup_json`, `__cleanup_libnvme_free`, etc. as variable declarations. When two or more `__cleanup_*` declarations appear together, or one appears alongside a plain declaration, checkpatch may report a missing blank line regardless of actual spacing. False positive — ignore it.
+checkpatch does not recognize `__cleanup_free`, `__cleanup_json`, `__cleanup_libnvme_free`, etc. as variable declarations. It reports a missing blank line when a `__cleanup_*` declaration is next to another declaration.
 
-**This one can fail CI**, not just local checks, when the `__cleanup_*` line is itself part of a freshly-added diff hunk: CI's checkpatch job runs `checkpatch.pl --git origin/master..HEAD`, and a newly-added `__cleanup_*` declaration shows up in that commit's patch and trips the same false positive (exit 1). Still safe to ignore — just don't assume the CI job stays green the first time this pattern is newly introduced in a PR.
+Since `1cb15e57e` (2026-10-07), `scripts/checkpatch-filter.pl` drops this warning. CI, `make checkpatch` and `make checkpatch-diff` all pipe checkpatch through it, so the warning is not shown and does not fail CI. If you see it, you ran `checkpatch.pl` directly. Pipe its output through the script, or use the make targets. Another false positive that can be matched reliably can go into the script too.
 
 ## Multi-commit PRs — "Duplicate signature" (no longer occurs)
 
