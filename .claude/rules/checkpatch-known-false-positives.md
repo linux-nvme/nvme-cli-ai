@@ -22,9 +22,11 @@ This warning came from piping a whole series into checkpatch as one patch: the a
 
 checkpatch treats any identifier where `for_each` is followed by more characters (e.g. `libnvmf_config_for_each_conn`) as an iterator macro and demands `{` on the same line as the declaration — a false ERROR on an ordinary function definition. Names *ending* in `for_each` (e.g. `libnvmf_exclusion_entry_for_each`) parse fine. This is also the codebase's own naming convention regardless: name iterators `<object>_for_each`, never `for_each_<object>`.
 
-## Function printing its own name — "Prefer `"%s...", __func__`"
+## Function printing its own name — "Prefer `"%s...", __func__`" (filtered in `tests/`)
 
-When a function logs its own name as a literal (e.g. `printf("test_foo:\n")`), checkpatch suggests `__func__` instead. **Do not "fix" this** — switching to `__func__` trades it for a different warning (`Unnecessary ftrace-like logging - prefer using ftrace`). Confirmed twice, independently, by actually making the change both times. This is a genuine no-win in the current checkpatch version; leave the literal name as-is, matching the codebase's existing style (e.g. `libnvme/test/registry.c`).
+When a function logs its own name as a literal (e.g. `printf("test_foo:\n")`), checkpatch suggests `__func__`. Do not change it. With `__func__`, checkpatch reports a different warning (`Unnecessary ftrace-like logging - prefer using ftrace`). No form passes. Keep the literal name, as the existing tests do (e.g. `libnvme/tests/registry.c`).
+
+Since `568e221d3` (2026-10-08), `scripts/checkpatch-filter.pl` drops this warning for files in a `tests/` directory. Outside `tests/`, the warning still appears. Accept it there for the same reason.
 
 ## Code-generator annotation comments over 80 columns
 
@@ -32,7 +34,7 @@ Lines like `struct libnvme_global_ctx { // !generate-accessors:read=none,write=n
 
 ## `volatile` on a field that's deliberately never cached
 
-checkpatch flags every `volatile` declaration with "Use of volatile is usually wrong." In the lazy-sysfs accessor structs (`libnvme_ctrl_sysfs`, `libnvme_path_sysfs`, …), a `volatile`-qualified member is a deliberate design choice — the whole point is that it's re-read from sysfs on every call and never cached, so the C keyword documents real intent, not a mistake. Precedent for legitimate `volatile` predates this pattern too (`util/sighdl-linux.c`, `util/sighdl-win.c`, `libnvme/test/register.c`). Don't remove `volatile` or restructure the field just to silence this warning when the semantics genuinely require it.
+checkpatch flags every `volatile` declaration with "Use of volatile is usually wrong." In the lazy-sysfs accessor structs (`libnvme_ctrl_sysfs`, `libnvme_path_sysfs`, …), a `volatile`-qualified member is a deliberate design choice — the whole point is that it's re-read from sysfs on every call and never cached, so the C keyword documents real intent, not a mistake. Precedent for legitimate `volatile` predates this pattern too (`shared/sig-util-linux.c`, `shared/sig-util-win.c`, `libnvme/tests/register.c`). Don't remove `volatile` or restructure the field just to silence this warning when the semantics genuinely require it.
 
 ## `sscanf` — "Prefer kstrto\<type\> to single variable sscanf"
 
