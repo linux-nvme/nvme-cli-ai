@@ -1,0 +1,51 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# usage: fuzz-seed-check -C BUILDDIR [-t TARGET] SEED...
+#
+# Rebuild tests/fuzz/fuzz-TARGET (default device) in BUILDDIR, a sanitizer
+# build without -Dfuzzing, and run each seed alone through the plain
+# test-suite driver, without mutations, as meson test would: sanitizers
+# halt on the first error. The driver sends the target's stderr to
+# /dev/null, so the sanitizer report is captured with log_path and its
+# summary printed.
+#
+# To show a regression seed fails without its fix: git apply -R the fix,
+# run this, git apply it again, run this again.
+set -u
+B=
+T=device
+while getopts :C:t: o; do
+	case $o in
+	C) B=$OPTARG ;;
+	t) T=$OPTARG ;;
+	*) sed -n '3,13s/^# \?//p' "$0"; exit 2 ;;
+	esac
+done
+shift $((OPTIND - 1))
+[ $# -gt 0 ] && [ -n "$B" ] || { sed -n '3,13s/^# \?//p' "$0"; exit 2; }
+
+ninja -C "$B" "tests/fuzz/fuzz-$T" >/dev/null || { echo "build failed"; exit 1; }
+bin=$(realpath "$B/tests/fuzz/fuzz-$T")
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail=0
+for s in "$@"; do
+	rm -rf "$work"/*
+	mkdir "$work/in"
+	cp "$s" "$work/in/"
+	( cd "$work" &&
+	  UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_stacktrace=1:log_path=$work/san \
+	  ASAN_OPTIONS=log_path=$work/san \
+	  FUZZ_SECONDS=0 "$bin" "$work/in" >/dev/null 2>&1 ) 2>/dev/null
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo "ok    $(basename "$s")"
+	else
+		fail=1
+		echo "FAIL  $(basename "$s") rc=$rc"
+		cat "$work"/san.* 2>/dev/null |
+			grep -m2 -E 'runtime error|SUMMARY' | sed 's/^/      /'
+	fi
+done
+exit $fail

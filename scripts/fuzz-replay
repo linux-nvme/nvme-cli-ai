@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+"""Compare what two builds print for the same device data.
+
+usage: fuzz-replay build BUILDDIR OUT     relink fuzz-device of BUILDDIR with
+                                          a driver which prints, as OUT
+       fuzz-replay gen DIR [--per N]      inputs: every command x variant x
+                                          N device data streams (default 3)
+       fuzz-replay run BIN INDIR OUTFILE  replay all inputs, one process per
+                                          command, so a crash costs little
+       fuzz-replay cmp OLD NEW            which inputs print differently
+
+Typical use, to show a refactoring keeps the output:
+  fuzz-replay build .b-old /tmp/r-old; fuzz-replay build .b /tmp/r-new
+  fuzz-replay gen /tmp/rin
+  fuzz-replay run /tmp/r-old /tmp/rin /tmp/old.txt
+  fuzz-replay run /tmp/r-new /tmp/rin /tmp/new.txt
+  fuzz-replay cmp /tmp/old.txt /tmp/new.txt
+
+The build directories need -Dfuzzing=false (plain driver) or true; the
+driver source is fuzz-replay-driver.c next to this script. Run it from
+the top of an nvme-cli checkout.
+"""
+import collections
+import os
+import random
+import re
+import subprocess
+import sys
+
+DRIVER = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                      'fuzz-replay-driver.c')
+TARGET = 'tests/fuzz/fuzz-device'
+
+
+def ninja_cmds(b):
+    return subprocess.run(['ninja', '-C', b, '-t', 'commands', TARGET],
+                          capture_output=True, text=True,
+                          check=True).stdout.splitlines()
+
+
+def build(b, out):
+    subprocess.run(['ninja', '-C', b, TARGET], check=True,
+                   stdout=subprocess.DEVNULL)
+    cmds = ninja_cmds(b)
+    cc = [c for c in cmds if 'fuzz-driver.c' in c and ' -c ' in c][-1]
+    obj_old = re.search(r' -o (\S+fuzz-driver\.c\.o)', cc).group(1)
+    obj = os.path.abspath(out) + '.driver.o'
+    cc = cc.split(' -MD ')[0] + f' -c {DRIVER} -o {obj}'
+    subprocess.run(cc, shell=True, cwd=b, check=True)
+    link = cmds[-1].replace(obj_old, obj)
+    link = re.sub(r' -o ' + re.escape(TARGET) + r'\b',
+                  ' -o ' + os.path.abspath(out), link)
+    # the relative rpath of the build breaks once the binary moves
+    link += f" -Wl,-rpath,{os.path.abspath(os.path.join(b, 'libnvme/src'))}"
+    subprocess.run(link, shell=True, cwd=b, check=True)
+    os.unlink(obj)
+    print(out)
+
+
+def nr_commands():
+    src = open('tests/fuzz/fuzz-device.c').read()
+    start = src.index('} commands[] = {')
+    return len(re.findall(r'^\t\{ \{', src[start:src.index('\n};', start)],
+                          re.M))
+
+
+def gen(out, per):
+    """byte 0 command, byte 1 variant, byte 2 argument, then answers"""
+    os.makedirs(out, exist_ok=True)
+    rnd = random.Random(4217)
+
+    def stream(kind, n):
+        b = bytearray()
+        while len(b) < n:
+            b.append(rnd.randrange(0, 0xe0))    # control: success
+            b += rnd.randbytes(4)               # result
+            m = rnd.choice([16, 64, 512, 4096])
+            if kind == 0:
+                b += rnd.randbytes(m)
+            elif kind == 1:
+                b += bytes(m)
+            elif kind == 2:
+                b += bytes(rnd.randrange(0x20, 0x7f) for _ in range(m))
+            elif kind == 3:
+                b += b'\xff' * m
+            else:
+                b += bytes(rnd.choice([0, 1, 2, 0x30, 0x41, 0xff])
+                           for _ in range(m))
+        return bytes(b[:n])
+
+    n = nr_commands()
+    for c in range(n):
+        for v in (0, 1, 2, 3, 5):
+            for k in range(per):
+                data = bytes([c, v, 1]) + stream(k % 5, rnd.choice(
+                    [2048, 16384, 60000]))
+                with open(os.path.join(out, f'c{c:03d}-v{v}-{k:02d}'),
+                          'wb') as f:
+                    f.write(data)
+    print(f'{n} commands x 5 variants x {per} -> {out}')
+
+
+def run(binp, indir, outfile):
+    binp = os.path.abspath(binp)
+    groups = collections.defaultdict(list)
+    for f in sorted(os.listdir(indir)):
+        groups[f[:4]].append(os.path.join(os.path.abspath(indir), f))
+    work = outfile + '.work'
+    os.makedirs(work, exist_ok=True)
+    failed = []
+    with open(outfile, 'w') as out:
+        for c, files in sorted(groups.items()):
+            out.flush()
+            r = subprocess.run(['timeout', '120', binp] + files, cwd=work,
+                               stdout=out, stderr=subprocess.STDOUT)
+            if r.returncode:
+                out.write(f'!!!!! {c} exit {r.returncode}\n')
+                failed.append(f'{c}:{r.returncode}')
+    print(f'{len(groups)} commands, {len(failed)} exited non-zero'
+          + (f': {" ".join(failed[:10])}' if failed else ''))
+    return 1 if failed else 0
+
+
+def cmp(old, new):
+    def load(p):
+        d, cur = {}, None
+        for l in open(p, errors='replace'):
+            if l.startswith('##### '):
+                cur = os.path.basename(l[6:].strip())
+                d.setdefault(cur, [])
+            elif cur:
+                # heap addresses differ from run to run (ASLR)
+                d[cur].append(re.sub(r'0x[0-9a-f]{9,}', '0xPTR', l))
+        return {k: ''.join(v) for k, v in d.items()}
+
+    a, b = load(old), load(new)
+    if not a or not b:
+        print('no replayed inputs in', old if not a else new)
+        return 2
+    diff = collections.defaultdict(list)
+    for k in sorted(set(a) | set(b)):
+        if a.get(k) != b.get(k):
+            diff[k[:4]].append(k)
+    print(f'{len(a)} vs {len(b)} inputs, {sum(map(len, diff.values()))} differ')
+    for c, ks in sorted(diff.items()):
+        print(f'  {c}: {len(ks)}, e.g. {" ".join(ks[:3])}')
+    return 1 if diff else 0
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ('-h', '--help'):
+        print(__doc__)
+        return 2
+    if a[0] == 'build' and len(a) == 3:
+        build(a[1], a[2])
+    elif a[0] == 'gen' and len(a) in (2, 4):
+        gen(a[1], int(a[3]) if len(a) == 4 and a[2] == '--per' else 3)
+    elif a[0] == 'run' and len(a) == 4:
+        return run(*a[1:])
+    elif a[0] == 'cmp' and len(a) == 3:
+        return cmp(*a[1:])
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

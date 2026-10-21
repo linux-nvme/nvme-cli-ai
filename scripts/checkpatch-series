@@ -1,0 +1,26 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# usage: checkpatch-series [BASE]   (default upstream/master)
+#
+# Run the current checkpatch.pl from torvalds/master, as the CI does, on
+# BASE..HEAD and filter it with scripts/checkpatch-filter.pl. The exit
+# status is the CI verdict: warnings fail too. checkpatch.pl is cached for
+# a day in ${XDG_CACHE_HOME:-~/.cache}/nvme-cli-ai. Run it from the top of
+# an nvme-cli checkout.
+set -u
+case ${1:-} in -h|--help) sed -n '3,9s/^# \?//p' "$0"; exit 2 ;; esac
+export LC_ALL=C
+base=${1:-upstream/master}
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/nvme-cli-ai/checkpatch.pl
+mkdir -p "$(dirname "$cache")"
+if [ ! -s "$cache" ] || [ -n "$(find "$cache" -mmin +1440)" ]; then
+	gh api -H "Accept: application/vnd.github.raw" \
+		repos/torvalds/linux/contents/scripts/checkpatch.pl > "$cache.new" &&
+		[ -s "$cache.new" ] && mv "$cache.new" "$cache" ||
+		echo "warning: could not update checkpatch.pl" >&2
+fi
+perl "$cache" --no-tree --git "$base..HEAD" 2>/dev/null |
+	perl scripts/checkpatch-filter.pl
+rc=${PIPESTATUS[1]}
+echo "checkpatch: exit $rc"
+exit "$rc"

@@ -39,6 +39,28 @@ The repository is not limited to any single AI platform and may evolve to suppor
 | `.claude/rules/` | Coding and workflow rules — accessor regeneration, API naming, commit messages, git workflow, license headers |
 | `.claude/settings.json` | Shared permission allowlist for common build, test, and git commands |
 | `.claude/skills/nvme-spec/` | The `/nvme-spec` skill — verifies C types and commands against the NVMe specification |
+| `scripts/` | Helper scripts for checkpatch, fuzzing and CLI review, usable with or without an AI assistant |
+
+## Scripts
+
+Run the scripts from the top of an nvme-cli checkout, e.g.
+`../nvme-cli-ai/scripts/checkpatch-series`. Each one prints its usage
+with `-h` or without arguments.
+
+| Script | Purpose |
+|--------|---------|
+| `checkpatch-series [BASE]` | Run the current `checkpatch.pl` on `BASE..HEAD` (default `upstream/master`) through `scripts/checkpatch-filter.pl`, as the CI does. The exit status is the CI verdict. |
+| `fuzz-triage DIR...` | Group fuzz-device artifacts by sanitizer finding and first nvme-cli frame, and decode the command each input runs. `--show FILE` prints the stack of one artifact. |
+| `fuzz-seed-check -C BUILDDIR SEED...` | Run regression seeds one by one through the test-suite driver of a sanitizer build, as `meson test` does, and print the sanitizer summary of a failure. |
+| `fuzz-replay build\|gen\|run\|cmp` | Compare what two builds print for the same generated device data, e.g. to show that a refactoring keeps the output. |
+| `cli-snapshot NVME OUTDIR` | Save the command metadata and the `--help` of every command, to diff the CLI of two builds. |
+
+The fuzz scripts need a sanitizer build:
+
+```bash
+CC=clang CXX=clang++ meson setup .build-asan \
+    -Db_sanitize=address,undefined -Db_lundef=false
+```
 
 ## Suggested Layout
 

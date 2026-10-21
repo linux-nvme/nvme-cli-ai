@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+"""Group fuzz-device findings by kind and first nvme-cli frame.
+
+usage: fuzz-triage [--bin FUZZ_DEVICE] [--repo DIR] ARTIFACT|DIR...
+       fuzz-triage --show [--bin FUZZ_DEVICE] ARTIFACT
+
+Each artifact is replayed once with halting sanitizers. The command it
+selects is decoded from the commands[] table of tests/fuzz/fuzz-device.c
+in --repo (byte 0 = exact index, byte 1 = variant bits). --show prints the
+first sanitizer stack of one artifact, symbolized with addr2line, which
+gives line numbers when llvm-symbolizer is missing.
+
+--bin defaults to $REPO/.build-ci/tests/fuzz/fuzz-device (scripts/build.sh
+fuzz), a libFuzzer binary, which runs a file argument once.
+"""
+import argparse
+import collections
+import os
+import re
+import subprocess
+import sys
+
+ENV = dict(os.environ,
+           ASAN_OPTIONS='detect_leaks=1:allocator_may_return_null=1',
+           UBSAN_OPTIONS='print_stacktrace=1:halt_on_error=1')
+VARIANT = ((1, 'json'), (2, 'verbose'), (4, 'ns'), (8, 'arg'))
+
+
+def commands(repo):
+    src = open(os.path.join(repo, 'tests/fuzz/fuzz-device.c')).read()
+    start = src.index('} commands[] = {')
+    body = src[start:src.index('\n};', start)]
+    cmds = []
+    for m in re.finditer(r'^\t\{ \{ ([^}]*)\}(?:, "([^"]+)")? \},', body, re.M):
+        argv = re.findall(r'"([^"]*)"', m.group(1))
+        cmds.append((' '.join(argv), m.group(2)))
+    return cmds
+
+
+def describe(data, cmds):
+    if len(data) < 2:
+        return '?'
+    if data[0] >= len(cmds):
+        return f'index {data[0]} (rejected)'
+    name, arg = cmds[data[0]]
+    flags = [n for bit, n in VARIANT if data[1] & bit]
+    if 'arg' in flags and arg and len(data) > 2:
+        flags[flags.index('arg')] = f'{arg}={data[2]}'
+    return name + (f' ({",".join(flags)})' if flags else '')
+
+
+def replay(binp, path):
+    try:
+        r = subprocess.run([binp, '-close_fd_mask=3', '-timeout=20', path],
+                           env=ENV, capture_output=True, text=True,
+                           errors='replace', timeout=120)
+        return r.stderr
+    except subprocess.TimeoutExpired:
+        return 'TIMEOUT'
+
+
+def frames(out):
+    """(function, file:line) of the first stack, via addr2line"""
+    raw = []
+    for l in out.splitlines():
+        m = re.match(r'\s+#(\d+) 0x[0-9a-f]+ .*\(([^()+]+)\+(0x[0-9a-f]+)\)', l)
+        if not m:
+            if raw and not l.strip():
+                break
+            continue
+        if m.group(1) == '0' and raw:
+            break
+        raw.append((m.group(2), int(m.group(3), 16) - 1))
+    res = []
+    for obj, off in raw:
+        r = subprocess.run(['addr2line', '-f', '-C', '-e', obj, hex(off)],
+                           capture_output=True, text=True)
+        fn, _, loc = r.stdout.partition('\n')
+        loc = loc.strip().split(' ')[0]
+        if '/nvme-cli/' in loc:
+            loc = loc.split('/nvme-cli/')[-1]
+        res.append((fn.strip(), loc.replace('../', '')))
+    return res
+
+
+SKIP_FN = ('__', 'fuzzer::', 'LLVMFuzzer', 'main', 'malloc', 'calloc',
+           'realloc', 'free', 'posix_memalign', 'plugin_call_run', 'nvme_main')
+SKIP_LOC = ('compiler-rt', 'libmock', 'fuzz-driver', 'fuzz-device.c', '??')
+
+
+def classify(out):
+    if 'TIMEOUT' in out or 'ALARM' in out or 'libFuzzer: timeout' in out:
+        kind = 'timeout'
+    elif 'out-of-memory' in out:
+        kind = 'oom'
+    elif 'leaked in' in out:
+        kind = 'leak'
+    else:
+        m = (re.search(r'SUMMARY: \w+Sanitizer: (\S+)', out) or
+             re.search(r'runtime error: (.*)', out))
+        kind = m.group(1)[:40] if m else 'no-repro'
+    m = re.search(r'(\S+\.c:\d+):\d+: runtime error', out)
+    if m:
+        return kind, m.group(1).replace('../', '')
+    if kind in ('no-repro', 'timeout', 'oom'):
+        return kind, '-'
+    for fn, loc in frames(out):
+        if fn.startswith(SKIP_FN) or any(s in loc for s in SKIP_LOC):
+            continue
+        return kind, f'{fn} {loc}'
+    return kind, '?'
+
+
+def show(binp, path, depth=14):
+    out = replay(binp, path)
+    for l in out.splitlines():
+        if re.search(r'ERROR|runtime error|SUMMARY|Direct leak|READ of|WRITE of', l):
+            print(l)
+    for fn, loc in frames(out)[:depth]:
+        print(f'    {fn} {loc}')
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--repo', default=os.getcwd())
+    ap.add_argument('--bin')
+    ap.add_argument('--show', action='store_true')
+    ap.add_argument('paths', nargs='+')
+    a = ap.parse_args()
+    binp = a.bin or os.path.join(a.repo, '.build-ci/tests/fuzz/fuzz-device')
+    if a.show:
+        for p in a.paths:
+            print(f'== {p}')
+            show(binp, p)
+        return
+    cmds = commands(a.repo)
+    files = []
+    for p in a.paths:
+        if os.path.isdir(p):
+            files += sorted(os.path.join(p, f) for f in os.listdir(p)
+                            if not f.startswith('slow-unit-'))
+        else:
+            files.append(p)
+    groups = collections.defaultdict(list)
+    for i, f in enumerate(files, 1):
+        print(f'\r{i}/{len(files)}', end='', file=sys.stderr, flush=True)
+        data = open(f, 'rb').read()
+        groups[classify(replay(binp, f))].append((f, describe(data, cmds)))
+    print(file=sys.stderr)
+    for (kind, frame), items in sorted(groups.items(), key=lambda x: x[0][1]):
+        names = sorted(set(d.split(' (')[0] for _, d in items))
+        print(f'{len(items):3d} {kind:24s} {frame}')
+        print(f'    [{", ".join(names)}] e.g. {os.path.basename(items[0][0])}: '
+              f'{items[0][1]}')
+
+
+if __name__ == '__main__':
+    main()
