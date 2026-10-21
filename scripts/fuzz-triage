@@ -96,6 +96,9 @@ def classify(out):
         kind = 'oom'
     elif 'leaked in' in out:
         kind = 'leak'
+    elif 'libFuzzer: deadly signal' in out:
+        # abort() without a sanitizer report, e.g. a failed assert()
+        kind = 'assert' if 'Assertion' in out else 'signal'
     else:
         m = (re.search(r'SUMMARY: \w+Sanitizer: (\S+)', out) or
              re.search(r'runtime error: (.*)', out))
