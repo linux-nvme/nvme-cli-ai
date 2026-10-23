@@ -1,38 +1,46 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
-# usage: fuzz-fetch [-t TARGET] [-r REMOTE_DIR] HOST LOCAL_DIR [SSH_OPTION...]
-#        fuzz-fetch -s [-t TARGET] [-r REMOTE_DIR] HOST [SSH_OPTION...]
+# usage: fuzz-fetch [-t TARGET] [-n SRC] [-r RESULTS] HOST LOCAL_DIR [SSH_OPTION...]
+#        fuzz-fetch -s [-t TARGET] [-n SRC] [-b BUILD] [-r RESULTS] HOST [SSH_OPTION...]
 #
-# Copy the findings of a scripts/build.sh fuzz run on HOST (user@host, as
-# for ssh) to LOCAL_DIR: the files of REMOTE_DIR/artifacts/TARGET, which
-# LOCAL_DIR does not have yet. REMOTE_DIR defaults to nvme-cli/.build-ci/fuzz
-# (relative to the home directory), TARGET to device. Each file is checked
-# against the SHA-1 in its name. Prints the new files; then triage them:
+# Copy the findings of a scripts/fuzz/nvme-fuzz run on HOST (user@host,
+# as for ssh) to LOCAL_DIR: the files of RESULTS/artifacts/TARGET, which
+# LOCAL_DIR does not have yet. SRC is the nvme-cli tree on HOST
+# (nvme-cli, relative to the home directory), RESULTS the --results of
+# the run (SRC/.build-fuzz/fuzz), TARGET defaults to device. Each file is
+# checked against the SHA-1 at the end of its name. Prints the new files;
+# then triage them:
 #
-#   fuzz-fetch root@box /tmp/f -4 -i ~/.ssh/key
-#   fuzz-triage --bin .bf/tests/fuzz/fuzz-device --repo . /tmp/f
+#   fuzz-fetch -n /root/nvme-cli -r /root/fuzz-results root@box /tmp/f -4
+#   scripts/fuzz/nvme-fuzz -C .build-fuzz triage /tmp/f
 #
-# -s instead replays every finding on HOST with its own fuzz target, which
-# has the symbolizer, and counts the findings by their SUMMARY line: which
-# bugs the run found, before copying anything.
+# -s instead triages every finding on HOST with nvme-fuzz triage of SRC
+# and the fuzz build BUILD (SRC/.build-fuzz): which bugs the run found,
+# before copying anything.
 #
 # Copies with ssh and tar: scp stalls on some hosts and flattens
 # directories. SSH_OPTIONs go to ssh as they are, e.g. -4 when IPv6
 # connections to HOST hang.
 set -u
 T=device
-R=nvme-cli/.build-ci/fuzz
+S=nvme-cli
+R=
+B=
 summary=
-usage() { sed -n '3,21s/^# \?//p' "$0"; exit 2; }
-while getopts :st:r: o; do
+usage() { sed -n '3,24s/^# \?//p' "$0"; exit 2; }
+while getopts :st:n:r:b: o; do
 	case $o in
 	s) summary=1 ;;
 	t) T=$OPTARG ;;
+	n) S=$OPTARG ;;
 	r) R=$OPTARG ;;
+	b) B=$OPTARG ;;
 	*) usage ;;
 	esac
 done
 shift $((OPTIND - 1))
+R=${R:-$S/.build-fuzz/fuzz}
+B=${B:-$S/.build-fuzz}
 
 ssh_run() {
 	timeout 900 ssh -o BatchMode=yes -o ConnectTimeout=20 "$@"
@@ -42,18 +50,11 @@ if [ -n "$summary" ]; then
 	[ $# -ge 1 ] || usage
 	host=$1
 	shift
-	# REMOTE_DIR is .build-ci/fuzz by default: the build directory is
-	# its parent, as scripts/build.sh fuzz has it
-	ssh_run "$@" "$host" "cd '$R' && b=\$(cd .. && pwd) &&
-		for f in artifacts/$T/*; do
-			ASAN_OPTIONS=allocator_may_return_null=1:max_allocation_size_mb=1024 \
-			UBSAN_OPTIONS=halt_on_error=1 \
-			s=\$(timeout 60 \$b/tests/fuzz/fuzz-$T -close_fd_mask=1 \$f 2>&1 |
-				grep -m1 '^SUMMARY')
-			[ -n \"\$s\" ] || s=\"no report: \$f\"
-			# drop the build directory and binary offsets
-			echo \"\$s\" | sed \"s|\$b/\\.\\./||; s/ *([^)]*+0x[^)]*)//g\"
-		done | sort | uniq -c | sort -rn"
+	# from /tmp: older versions of nvme-fuzz replay in the current
+	# directory, which collects the crash-* files of the inputs
+	ssh_run "$@" "$host" "s=\$(cd '$S' && pwd) &&
+		b=\$(cd '$B' && pwd) && r=\$(cd '$R' && pwd) && cd /tmp &&
+		\$s/scripts/fuzz/nvme-fuzz -C \$b triage --target '$T' \$r/artifacts/'$T'"
 	exit
 fi
 
@@ -79,7 +80,8 @@ ssh_run "$@" "$host" "cd '$R/artifacts/$T' && tar cf - ${want[*]}" |
 bad=0
 for f in "${want[@]}"; do
 	sum=$(sha1sum < "$dir/$f" | cut -c1-40)
-	if [ "${f#*-}" != "$sum" ]; then
+	# crash-<sha1>, data-<limit>-crash-<sha1>, ...
+	if [ "${f##*-}" != "$sum" ]; then
 		echo "BAD   $f (sha1 $sum)" >&2
 		bad=1
 	else

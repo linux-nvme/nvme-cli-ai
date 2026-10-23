@@ -52,6 +52,7 @@ with `-h` or without arguments.
 | `checkpatch-series [BASE]` | Run the current `checkpatch.pl` on `BASE..HEAD` (default `upstream/master`) through `scripts/checkpatch-filter.pl`, as the CI does. The exit status is the CI verdict. |
 | `fuzz-triage DIR...` | Group fuzz-device artifacts by sanitizer finding and first nvme-cli frame, and decode the command each input runs. `--show FILE` prints the stack of one artifact. |
 | `fuzz-seed-check -C BUILDDIR SEED...` | Run regression seeds one by one through the test-suite driver of a sanitizer build, as `meson test` does, and print the sanitizer summary of a failure. |
+| `fuzz-fetch HOST DIR` | Copy the findings of a `scripts/fuzz/nvme-fuzz run` on a remote host which `DIR` does not have yet, and check them against their SHA-1. `-s` triages them on the host instead. |
 | `fuzz-replay build\|gen\|run\|cmp` | Compare what two builds print for the same generated device data, e.g. to show that a refactoring keeps the output. |
 | `cli-snapshot NVME OUTDIR` | Save the command metadata and the `--help` of every command, to diff the CLI of two builds. |
 
