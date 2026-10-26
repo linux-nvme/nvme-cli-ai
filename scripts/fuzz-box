@@ -1,0 +1,175 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# usage: fuzz-box [OPTION...] COMMAND HOST [ARG...]
+#
+# Drive scripts/fuzz/nvme-fuzz runs of the device target on a remote box
+# (HOST: user@host, as for ssh). Run it from the top of the local nvme-cli
+# checkout; the box needs an nvme-cli clone and the fuzz build tools.
+#
+#   start HOST END     run fuzz-box-run there, detached: update to master,
+#                      apply the queue, build, fuzz until END (a date(1)
+#                      time). Waits for a run which is still going.
+#   status HOST        processes, progress, findings, corpus, disk
+#   stop HOST          stop the run (and a fuzz-box-run waiting for it)
+#   queue HOST [PREFIX REVS]
+#                      list the patch queue, or add the commits REVS
+#                      (e.g. master..fix-foo) as PREFIX-0001-*.patch, ...
+#                      and verify the queue
+#   verify HOST        apply the queue to the upstream master in a
+#                      scratch worktree of the local checkout
+#   prune HOST         move the patches which are upstream to QUEUE.merged
+#   coverage HOST [ARG...]
+#                      nvme-fuzz coverage --corpus of the results, after
+#                      a run, on the tree which was fuzzed (inputs select
+#                      the commands by index)
+#
+# Options (paths on HOST, relative to the home directory):
+#   -n SRC       the nvme-cli tree (nvme-cli)
+#   -r RESULTS   the --results of the runs (fuzz-results)
+#   -q QUEUE     the patch queue (fuzz-queue)
+#   -l LOG       the progress of fuzz-box-run (fuzz-run.log); the
+#                output of nvme-fuzz goes to LOG with .out for .log
+#   -j JOBS      fuzz jobs (see fuzz-box-run)
+#   -P DIR       put DIR first in PATH on HOST, e.g. for a newer python3
+#   -s OPTIONS   ssh options, e.g. -s "-4 -i $HOME/.ssh/box"
+set -u
+S=nvme-cli
+R=fuzz-results
+Q=fuzz-queue
+L=fuzz-run.log
+J=
+P=
+ssh_opts=()
+usage() { sed -n '3,35s/^# \?//p' "$0"; exit 2; }
+while getopts :n:r:q:l:j:P:s: o; do
+	case $o in
+	n) S=$OPTARG ;;
+	r) R=$OPTARG ;;
+	q) Q=$OPTARG ;;
+	l) L=$OPTARG ;;
+	j) J=$OPTARG ;;
+	P) P=$OPTARG ;;
+	s) read -ra ssh_opts <<< "$OPTARG" ;;
+	*) usage ;;
+	esac
+done
+shift $((OPTIND - 1))
+[ $# -ge 2 ] || usage
+cmd=$1 host=$2
+shift 2
+here=$(dirname "$(realpath "$0")")
+
+# remote shell commands start in the home directory
+remote() {
+	ssh -o BatchMode=yes -o ConnectTimeout=20 "${ssh_opts[@]}" "$host" \
+		"${P:+PATH=$P:\$PATH; export PATH; }$1"
+}
+
+# the PIDs of a fuzz-box-run and of nvme-fuzz run: anchored at the
+# command, so that no shell with the pattern in its arguments matches
+pids='ps -eo pid=,args= | grep -E "^ *[0-9]+ ([^ ]*bash [^ ]*fuzz-box-run|([^ ]*python3[.0-9]* )?[^ ]*nvme-fuzz run --targets)"'
+
+# apply the queue to the upstream master; prints one line per patch,
+# "upstream" for one master has already
+verify() {
+	local q wt p n=0 bad=0
+	q=$(mktemp -d) || return 1
+	wt=$q/wt
+	remote "cd '$Q' && tar cf - --files-from=/dev/null \$(ls *.patch 2>/dev/null)" < /dev/null |
+		tar -x -C "$q" || { rm -rf "$q"; return 1; }
+	git fetch -q https://github.com/linux-nvme/nvme-cli.git master &&
+		git worktree add -q --detach "$wt" FETCH_HEAD || { rm -rf "$q"; return 1; }
+	echo "master $(git -C "$wt" log -1 --format='%h %s')"
+	for p in "$q"/*.patch; do
+		[ -e "$p" ] || break
+		n=$((n + 1))
+		if git -C "$wt" apply --check -R "$p" 2>/dev/null; then
+			echo "upstream ${p##*/}"
+		elif git -C "$wt" -c user.name=fuzz -c user.email=fuzz@localhost \
+			am -q -3 "$p" > /dev/null 2>&1; then
+			echo "applies  ${p##*/}"
+		else
+			echo "FAILS    ${p##*/}"
+			git -C "$wt" am --abort
+			bad=1
+		fi
+	done
+	[ "$n" -gt 0 ] || echo "the queue is empty"
+	git worktree remove --force "$wt"
+	rm -rf "$q"
+	return $bad
+}
+
+case $cmd in
+start)
+	[ $# -eq 1 ] || usage
+	end=$1
+	date -d "$end" > /dev/null || exit 1
+	remote 'cat > fuzz-box-run && chmod +x fuzz-box-run' < "$here/fuzz-box-run" || exit 1
+	# a fuzz-box-run started before, else the run itself
+	wait=$(remote "$pids" < /dev/null | awk 'NR == 1 { print $1 }')
+	args=(-n "$S" -r "$R" -q "$Q" -o "${L%.log}.out" ${J:+-j "$J"} ${wait:+-w "$wait"})
+	# only the detached command in the background: anything else there
+	# keeps the ssh connection open until the run ends
+	remote "setsid nohup ./fuzz-box-run ${args[*]@Q} ${end@Q} >> ${L@Q} 2>&1 < /dev/null &" < /dev/null
+	sleep 2
+	remote "$pids; tail -3 ${L@Q}" < /dev/null
+	;;
+status)
+	remote "date; uptime
+		echo '--- processes'; $pids
+		echo '--- $L'; tail -6 '$L' 2>/dev/null
+		echo '--- ${L%.log}.out'; tail -6 '${L%.log}.out' 2>/dev/null
+		echo '--- findings'; ls '$R/artifacts/device' 2>/dev/null | wc -l
+		tail -3 '$R/summary.txt' 2>/dev/null
+		echo '--- corpus'; ls '$R/corpus/device' 2>/dev/null | wc -l
+		echo '--- queue'; ls '$Q' 2>/dev/null
+		echo '--- disk, memory'; { df -h '$R' 2>/dev/null || df -h .; } | tail -1; free -g | sed -n 2p" < /dev/null
+	;;
+stop)
+	# the waiting fuzz-box-run first, then nvme-fuzz, which stops its jobs
+	remote "$pids" < /dev/null | sort -k2 | while read -r pid args; do
+		echo "stopping $pid $args"
+		remote "kill -TERM $pid" < /dev/null
+	done
+	;;
+queue)
+	if [ $# -eq 0 ]; then
+		remote "ls '$Q'" < /dev/null
+		exit
+	fi
+	[ $# -eq 2 ] || usage
+	prefix=$1 revs=$2
+	out=$(mktemp -d) || exit 1
+	git format-patch -q -o "$out" "$revs" || { rm -rf "$out"; exit 1; }
+	for p in "$out"/*.patch; do
+		mv "$p" "$out/$prefix-${p##*/}"
+	done
+	(cd "$out" && tar cf - -- *.patch) |
+		remote "mkdir -p '$Q' && tar x -C '$Q' && ls '$Q'"
+	rm -rf "$out"
+	verify
+	;;
+verify)
+	verify
+	;;
+prune)
+	verify | awk '$1 == "upstream" { print $2 }' | while read -r p; do
+		echo "merged $p"
+		remote "mkdir -p '$Q.merged' && mv '$Q/$p' '$Q.merged/'" < /dev/null
+	done
+	;;
+coverage)
+	# libFuzzer replaces corpus files while it runs
+	if [ -n "$(remote "$pids" < /dev/null)" ]; then
+		echo "a run is going on $host, its corpus changes" >&2
+		exit 1
+	fi
+	remote "s=\$(cd '$S' && pwd) && r=\$(cd '$R' && pwd) && cd /tmp &&
+		\$s/scripts/fuzz/nvme-fuzz -C \$s/.build-fuzz coverage \
+		--corpus \$r/corpus/device ${*@Q}" < /dev/null
+	;;
+*)
+	usage
+	;;
+esac

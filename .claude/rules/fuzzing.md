@@ -61,15 +61,50 @@ scripts/fuzz/nvme-fuzz run --targets device --seconds 3600 --jobs 8
   `scripts/build.sh fuzz` removes the build directory, results included.
 - Before a run, `nvme-fuzz run` adds seeds from the mock tests (see
   Coverage).
-- On a remote box: start detached (`setsid nohup ... < /dev/null &`), and
-  queue the open fixes as patches on top of master, so the run doesn't
-  re-find bugs that are already fixed. Output is block-buffered; look at
-  `summary.txt` and the job logs instead. To stop a run, kill its PID. Don't
-  use `pkill -f` over ssh: the pattern also matches the remote shell
-  running your command.
+- On a remote box, use `scripts/fuzz-box` (this repo, see below). Output
+  is block-buffered; look at `summary.txt` and the job logs instead.
 - An input that crashes almost every run kills throughput: each finding
   ends a job and the new job reloads the corpus. Fix trivial crashers
   first.
+
+## A remote fuzz box
+
+Long runs go to a big box. `scripts/fuzz-box` (this repo) drives them
+over ssh from the local nvme-cli checkout; the box needs an nvme-cli
+clone, clang with libFuzzer, meson and python3. The box runs
+`scripts/fuzz-box-run`, which waits for the run before, updates the tree
+to the upstream master, applies the patch queue, builds and fuzzes until
+an end time.
+
+```bash
+box() { ../nvme-cli-ai/scripts/fuzz-box -s "-i $HOME/.ssh/box" "$@"; }
+box queue root@box p1 upstream/master..fix-foo  # queue the open fixes
+box start root@box "2026-10-27 08:00"          # the box's time zone
+box status root@box                            # progress, findings
+box stop root@box
+box prune root@box                             # drop merged patches
+```
+
+- Queue every open fix, also one which can't trigger on the box, so the
+  run doesn't re-find fixed bugs or report against code that is about to
+  change. `queue` and `verify` apply the whole queue to the upstream master
+  in a scratch worktree; `prune` moves the patches which are upstream to
+  `QUEUE.merged`. A patch the box can't apply is skipped, see its log.
+- `start` while a run is going waits for it, so the next run is queued.
+  Each run uses the master of the moment it starts.
+- Triage a run and look at its `coverage` before the next run starts:
+  `fuzz-box-run` moves the tree to the new master, and inputs select
+  commands by index. Later, replay them only on a tree with the same
+  `tests/fuzz/fuzz-device.c`. `fuzz-fetch -n SRC -r RESULTS` copies the
+  findings with the same paths as `fuzz-box -n SRC -r RESULTS`.
+- `-P DIR` puts DIR first in PATH on the box, e.g. a directory with a
+  `python3` link to a newer Python than the system one (meson's tests
+  pick `python3`).
+- Don't start remote commands as part of a list in the background
+  (`a && setsid nohup b &`): the subshell keeps the ssh connection open
+  until the run ends. Don't use `pkill -f` over ssh: the pattern also
+  matches the remote shell running your command; `fuzz-box stop` kills
+  by PID.
 
 ## Before adding commands to the device table
 
