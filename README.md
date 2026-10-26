@@ -51,6 +51,7 @@ with `-h` or without arguments.
 |--------|---------|
 | `checkpatch-series [BASE]` | Run the current `checkpatch.pl` on `BASE..HEAD` (default `upstream/master`) through `scripts/checkpatch-filter.pl`, as the CI does. The exit status is the CI verdict. |
 | `fuzz-fetch HOST DIR` | Copy the findings of a `scripts/fuzz/nvme-fuzz run` on a remote host which `DIR` does not have yet, and check them against their SHA-1. `-s` triages them on the host instead. |
+| `fuzz-box COMMAND HOST` | Run the device fuzz target on a remote box: `start` a run until a time (update to master, apply a patch queue, build, fuzz; waits for the run before), `status`, `stop`, `queue` patches, `verify` that the queue applies to master, `prune` merged patches, corpus `coverage`. Copies `fuzz-box-run` to the box for the run itself. |
 | `fuzz-replay build\|gen\|run\|cmp` | Compare what two builds print for the same generated device data, e.g. to show that a refactoring keeps the output. |
 | `cli-snapshot NVME OUTDIR` | Save the command metadata and the `--help` of every command, to diff the CLI of two builds. |
 

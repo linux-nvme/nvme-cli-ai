@@ -1,0 +1,81 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# usage: fuzz-box-run [-n SRC] [-r RESULTS] [-q QUEUE] [-o OUT] [-j JOBS]
+#                     [-w PID] END
+#
+# Runs on the fuzz box; fuzz-box start copies it there and starts it.
+# Waits until the process PID (e.g. the run before) exits, updates the
+# nvme-cli tree SRC (nvme-cli) to the upstream master, applies the
+# patches QUEUE/*.patch (fuzz-queue) in name order, builds the fuzz
+# targets and fuzzes the device target with JOBS jobs until 15 minutes
+# before END, a date(1) time such as "2026-10-27 08:00". The results go
+# to RESULTS (fuzz-results), the output of nvme-fuzz to OUT
+# (fuzz-run.out), the progress to stdout.
+#
+# A patch which does not apply, usually because it is upstream by now,
+# is skipped. JOBS defaults to the number of CPUs, at most one per
+# 1.25 GiB of available memory: a job of the device target takes about
+# 1.1 GiB.
+set -u
+S=nvme-cli
+R=fuzz-results
+Q=fuzz-queue
+O=fuzz-run.out
+J=
+W=
+usage() { sed -n '3,19s/^# \?//p' "$0"; exit 2; }
+while getopts :n:r:q:o:j:w: o; do
+	case $o in
+	n) S=$OPTARG ;;
+	r) R=$OPTARG ;;
+	q) Q=$OPTARG ;;
+	o) O=$OPTARG ;;
+	j) J=$OPTARG ;;
+	w) W=$OPTARG ;;
+	*) usage ;;
+	esac
+done
+shift $((OPTIND - 1))
+[ $# -eq 1 ] || usage
+end=$(date -d "$1" +%s) || exit 1
+shopt -s nullglob
+
+# the paths are relative to the start directory, not to SRC
+R=$(realpath -m "$R") Q=$(realpath -m "$Q") O=$(realpath -m "$O")
+
+if [ -z "$J" ]; then
+	mem=$(awk '/^MemAvailable:/ { print int($2 / 1310720) }' /proc/meminfo)
+	J=$(nproc)
+	[ "$mem" -lt "$J" ] && J=$mem
+fi
+
+if [ -n "$W" ]; then
+	echo "$(date) waiting for pid $W"
+	while kill -0 "$W" 2>/dev/null; do sleep 60; done
+fi
+echo "$(date) starting"
+cd "$S" || exit 1
+# left behind by inputs which crashed before their cleanup
+rm -rf fuzz-device-??????
+git reset -q --hard
+git fetch -q https://github.com/linux-nvme/nvme-cli.git master || exit 1
+git checkout -q --detach FETCH_HEAD
+echo "master $(git log -1 --format='%h %s')"
+for p in "$Q"/*.patch; do
+	if git -c user.name=fuzz -c user.email=fuzz@localhost am -q -3 "$p" \
+		>/dev/null 2>&1; then
+		echo "applied ${p##*/}"
+	else
+		echo "skipped ${p##*/}"
+		git am --abort
+	fi
+done
+scripts/fuzz/nvme-fuzz build > "$O.build" 2>&1 ||
+	{ echo "build failed, see $O.build"; exit 1; }
+# the mock seeds and the corpus merge take a few minutes
+secs=$((end - $(date +%s) - 900))
+[ "$secs" -gt 3600 ] || { echo "too late: $secs s left"; exit 1; }
+echo "$(date) fuzzing with $J jobs for $secs s at $(git rev-parse --short=12 HEAD)"
+scripts/fuzz/nvme-fuzz run --targets device --seconds "$secs" --jobs "$J" \
+	--results "$R" > "$O" 2>&1
+echo "$(date) done, exit $?"
