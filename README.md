@@ -36,7 +36,7 @@ The repository is not limited to any single AI platform and may evolve to suppor
 | Path | Purpose |
 |------|---------|
 | `CLAUDE.md` | Shared project context and an nvme-cli reference guide loaded by Claude Code |
-| `.claude/rules/` | Coding and workflow rules — accessor regeneration, API naming, commit messages, git workflow, license headers |
+| `.claude/rules/` | Coding and workflow rules — accessor regeneration, API naming, commit messages, git workflow, license headers, fuzzing, NVMe-oF failover testing |
 | `.claude/settings.json` | Shared permission allowlist for common build, test, and git commands |
 | `.claude/skills/nvme-spec/` | The `/nvme-spec` skill — verifies C types and commands against the NVMe specification |
 | `scripts/` | Helper scripts for checkpatch, fuzzing and CLI review, usable with or without an AI assistant |
