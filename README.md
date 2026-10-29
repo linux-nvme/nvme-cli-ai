@@ -54,6 +54,7 @@ with `-h` or without arguments.
 | `fuzz-box COMMAND HOST` | Run the device fuzz target on a remote box: `start` a run until a time (update to master, apply a patch queue, build, fuzz; waits for the run before), `status`, `stop`, `queue` patches, `verify` that the queue applies to master, `prune` merged patches, corpus `coverage`. Copies `fuzz-box-run` to the box for the run itself. |
 | `fuzz-replay build\|gen\|run\|cmp` | Compare what two builds print for the same generated device data, e.g. to show that a refactoring keeps the output. |
 | `cli-snapshot NVME OUTDIR` | Save the command metadata and the `--help` of every command, to diff the CLI of two builds. |
+| `discoverd-vm/discoverd-vm-mcp` | MCP server which tests, in a Fedora VM, what a system shutdown does to the nvme-discoverd connection units and the file systems mounted on them. See `scripts/discoverd-vm/README.md`. |
 
 The fuzz scripts need a sanitizer build:
 
