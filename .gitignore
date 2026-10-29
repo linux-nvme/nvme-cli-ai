@@ -15,3 +15,7 @@ CLAUDE.local.md
 # .claude/commands/
 # .claude/rules/
 # .claude/skills/
+
+# Python caches of the scripts
+__pycache__/
+.ruff_cache/
