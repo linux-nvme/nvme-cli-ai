@@ -96,7 +96,7 @@ for p in pages:
         if line.startswith('|'):
             continue
         # a line which is one link can't be wrapped
-        one_link = re.fullmatch(r'\s*([*-] )?\[[^]]*\]\([^)]*\)', line)
+        one_link = re.fullmatch(r'\s*([*-] )?(\[[^]]*\]\([^)]*\)|<?[a-z]+://\S+?>?)[.,;:]?', line)
         if len(line) > 80 and not one_link and not re.search(r'\]\([a-z]+://', line) \
                 and not re.fullmatch(r'\S+', line):
             report('warning', where, f'line has {len(line)} columns')
