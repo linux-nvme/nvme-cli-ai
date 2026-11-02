@@ -71,6 +71,26 @@ file covers how to run it from a session, and what went wrong before.
 - "connection unit failed" for target ports whose link is down on the array
   side is the expected retry, not a failover problem.
 
+## Watching the host with nvme-mcp
+
+nvme-mcp (`scripts/mcp` in nvme-cli, see its README) shows the host's side
+of a fault while it happens: `nvme_watch` reports the controller and ANA
+state changes, the paths which stop or start to carry I/O, the stalls and
+the kernel log lines about nvme, with the time each was seen. Start it
+before the fault, e.g. from a parallel tool call; its `Started` field is the
+wall clock time of the start, to line it up with the times of
+nvmf-failover.
+
+- It runs as any user: the statistics and counters come from sysfs. Run it
+  with `sudo` for the kernel log, which only root can read when
+  `kernel.dmesg_restrict` is set. Without root, the watch reports
+  `KernelLogError` instead of the log lines.
+- `--allow-iopolicy` adds the tools which change the I/O policy of a
+  subsystem. They need root. Leave it off on a shared host unless the user
+  asked for it.
+- It needs an nvme binary with `nvme top -o json` (3.2 or later); `--nvme`
+  selects one from a build directory.
+
 ## Before blaming nvme-discoverd
 
 - The legacy udev autoconnect must be off: `70-nvmf-autoconnect.rules`
