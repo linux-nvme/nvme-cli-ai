@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# usage: wiki-lint [-n NVME_CLI] [WIKI_DIR]
+#
+# Checks a checkout of the nvme-cli wiki (default: the current directory):
+#   errors:   page names which are not plain ASCII, links to missing pages
+#             or anchors, "X.Y (unreleased)" for a release with a tag in
+#             NVME_CLI (default: ../nvme-cli)
+#   warnings: lines over 80 columns outside code blocks and tables, em
+#             dashes and " -- " asides
+# The exit status is 1 if there is an error, else 0.
+import os, re, subprocess, sys, unicodedata
+
+args = sys.argv[1:]
+if args and args[0] in ('-h', '--help'):
+    head = open(__file__).read().split('\nimport')[0].splitlines()[2:]
+    sys.exit('\n'.join(l[2:] for l in head))
+nvme_cli = '../nvme-cli'
+if len(args) >= 2 and args[0] == '-n':
+    nvme_cli, args = args[1], args[2:]
+if len(args) > 1:
+    sys.exit('usage: wiki-lint [-n NVME_CLI] [WIKI_DIR]')
+wiki = args[0] if args else '.'
+if not os.path.isfile(os.path.join(wiki, 'Home.md')):
+    sys.exit(f'wiki-lint: {wiki}: no Home.md, not a wiki checkout')
+
+pages = sorted(f for f in os.listdir(wiki) if f.endswith('.md'))
+names = {p[:-3] for p in pages}
+errors = warnings = 0
+
+
+def report(kind, where, msg):
+    global errors, warnings
+    if kind == 'error':
+        errors += 1
+    else:
+        warnings += 1
+    print(f'{where}: {kind}: {msg}')
+
+
+def slug(heading):
+    # the anchor GitHub gives a heading
+    s = re.sub(r'[`*_]|\[([^]]*)\]\([^)]*\)', r'\1', heading).strip().lower()
+    s = ''.join(c for c in s if c in ' -' or unicodedata.category(c)[0] in 'LN')
+    return s.replace(' ', '-')
+
+
+anchors = {}
+texts = {}
+for p in pages:
+    text = open(os.path.join(wiki, p), encoding='utf-8').read()
+    texts[p] = text
+    seen = {}
+    for m in re.finditer(r'^#{1,6}\s+(.*?)\s*#*\s*$', re.sub(r'```.*?```', '', text, flags=re.S), re.M):
+        s = slug(m.group(1))
+        n = seen.get(s, 0)
+        seen[s] = n + 1
+        anchors.setdefault(p[:-3], set()).add(s if n == 0 else f'{s}-{n}')
+
+tags = set()
+try:
+    out = subprocess.run(['git', '-C', nvme_cli, 'tag', '-l', 'v*'],
+                         capture_output=True, text=True, check=True).stdout
+    tags = {t[1:] for t in out.split()}
+except (OSError, subprocess.CalledProcessError):
+    print(f'wiki-lint: {nvme_cli}: no git tags, skipping the release check')
+
+for p in pages:
+    if not p.isascii():
+        report('error', p, 'page name is not plain ASCII; '
+               'GitHub shows each ASCII "-" as a space, so pick a name which reads well that way')
+    in_code = False
+    for no, line in enumerate(texts[p].splitlines(), 1):
+        where = f'{p}:{no}'
+        if line.lstrip().startswith('```'):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        for m in re.finditer(r'\]\(([^)\s]+)\)', line):
+            target = m.group(1)
+            if re.match(r'[a-z]+:', target) or target.startswith('/'):
+                continue
+            page, _, anchor = target.partition('#')
+            page = page or p[:-3]
+            if page.endswith('.md'):
+                page = page[:-3]
+            if page not in names:
+                if not os.path.exists(os.path.join(wiki, page)):
+                    report('error', where, f'link to a missing page: {target}')
+            elif anchor and anchor not in anchors.get(page, set()):
+                report('error', where, f'link to a missing anchor: {target}')
+        for m in re.finditer(r'(\d+\.\d+) \(unreleased\)', line):
+            if m.group(1) in tags:
+                report('error', where, f'{m.group(1)} is released (tag v{m.group(1)})')
+        if line.startswith('|'):
+            continue
+        # a line which is one link can't be wrapped
+        one_link = re.fullmatch(r'\s*([*-] )?\[[^]]*\]\([^)]*\)', line)
+        if len(line) > 80 and not one_link and not re.search(r'\]\([a-z]+://', line) \
+                and not re.fullmatch(r'\S+', line):
+            report('warning', where, f'line has {len(line)} columns')
+        if '—' in line or re.search(r'\w -- \w', line.replace('`', '')):
+            report('warning', where, 'em dash or " -- " aside; split the sentence')
+
+print(f'{len(pages)} pages, {errors} errors, {warnings} warnings')
+sys.exit(1 if errors else 0)

@@ -53,6 +53,7 @@ with `-h` or without arguments.
 | `fuzz-fetch HOST DIR` | Copy the findings of a `scripts/fuzz/nvme-fuzz run` on a remote host which `DIR` does not have yet, and check them against their SHA-1. `-s` triages them on the host instead. |
 | `fuzz-box COMMAND HOST` | Run the device fuzz target on a remote box: `start` a run until a time (update to master, apply a patch queue, build, fuzz; waits for the run before), `status`, `stop`, `queue` patches, `verify` that the queue applies to master, `prune` merged patches, corpus `coverage`. Copies `fuzz-box-run` to the box for the run itself. |
 | `fuzz-replay build\|gen\|run\|cmp` | Compare what two builds print for the same generated device data, e.g. to show that a refactoring keeps the output. |
+| `wiki-lint [-n NVME_CLI] [WIKI_DIR]` | Check a checkout of the nvme-cli wiki: page names which are not plain ASCII, links to missing pages or anchors, and "X.Y (unreleased)" for a released version are errors; long lines and em dash asides are warnings. Run it before pushing wiki changes and after each release. |
 | `cli-snapshot NVME OUTDIR` | Save the command metadata and the `--help` of every command, to diff the CLI of two builds. |
 | `discoverd-vm/discoverd-vm-mcp` | MCP server which tests, in a Fedora VM, what a system shutdown does to the nvme-discoverd connection units and the file systems mounted on them. See `scripts/discoverd-vm/README.md`. |
 
