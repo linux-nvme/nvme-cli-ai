@@ -99,7 +99,7 @@ scripts/                build.sh, release.sh, gen-hostnqn.sh
 ccan/                   Embedded utility library
 nvmf-autoconnect/       Systemd integration for NVMe-oF auto-connect
 completions/            Shell completion files
-.github/workflows/      12 CI workflows
+.github/workflows/      13 CI workflows
 ```
 
 ---
@@ -281,7 +281,7 @@ libnvme/src/libnvme.ld      Hand-maintained ABI version script
 libnvme/src/nvme/accessors.ld  Auto-generated accessor ABI version script
 ```
 
-**Important**: `accessors.h` and `accessors.c` are generated — do not edit by hand. The generator lives in `libnvme/` tree (Python scripts). The CI workflow `check-accessors.yml` validates they are up to date.
+**Important**: `accessors.h` and `accessors.c` are generated — do not edit by hand. The generator lives in `libnvme/` tree (Python scripts). The `check-accessors` job of the CI workflow `checks.yml` validates they are up to date.
 
 **NVMe-oF footprint constraint**: The `fabrics` build option can be disabled for embedded/PCIe-only targets. Anything fabrics-specific must remain in `fabrics.c` / `nvmf-*` files, not bleed into core nvme.c.
 
@@ -327,15 +327,23 @@ Plugin commands: `Documentation/nvme-{vendor}-{cmd}.txt`.
 
 ## CI
 
-15 GitHub Actions workflows in `../nvme-cli/.github/workflows/`. Key ones:
+13 GitHub Actions workflows in `../nvme-cli/.github/workflows/`. The file
+names follow the sidebar names: `build-*`, `checks`/`checkpatch`,
+`nightly-*`, `release-*`. Key ones:
 - **build.yml** — matrix: Debian/Fedora/Tumbleweed × gcc/clang × debug/release
+- **build-freebsd.yml** — FreeBSD build and tests in a VM, also for PRs
+- **checks.yml** — generated accessors and completions are current, and
+  the libnvme ABI is compatible with the last release
 - **checkpatch.yml** — Linux kernel style (runs on every PR)
-- **check-accessors.yml** — validates accessor generation is current
-- **abi-check.yml** — checks the libnvme ABI against the last release
-- **analyzer.yml** — clang static analyzer, nightly
-- **run-nightly-tests.yml** — blktests and nvme tests on a VM runner,
-  nightly; uploads the coverage reports to Codecov
+- **nightly-tests.yml** — blktests and nvme tests on a VM runner;
+  uploads the coverage reports to Codecov
+- **nightly-analyzers.yml** — clang static analyzer and Coverity
 - **status-page.yml** — publishes the nightly results to GitHub Pages
+- **release-python.yml** — PyPI/TestPyPI uploads; the trusted publishers
+  on both sites name this file, so a rename needs new publishers first
+
+Every job has a `timeout-minutes`, and a new push to a PR cancels the
+PR's older runs; pushes to master are never cancelled.
 
 The nightly workflows run at about 21:00 UTC, off the full hour: GitHub
 started the runs at 01:00 UTC 5 to 7 hours late.

@@ -5,8 +5,8 @@
 
 libnvme exposes auto-generated getter/setter functions for its opaque structs.
 The generated files are committed to the nvme-cli tree and validated by CI
-(`check-accessors.yml`). They must be kept in sync with `private.h` and
-`private-fabrics.h`.
+(the `check-accessors` job in `checks.yml`). They must be kept in sync with
+`private.h` and `private-fabrics.h`.
 
 ## When to regenerate
 
