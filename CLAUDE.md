@@ -99,7 +99,7 @@ scripts/                build.sh, release.sh, gen-hostnqn.sh
 ccan/                   Embedded utility library
 nvmf-autoconnect/       Systemd integration for NVMe-oF auto-connect
 completions/            Shell completion files
-.github/workflows/      13 CI workflows
+.github/workflows/      14 CI workflows
 ```
 
 ---
@@ -327,11 +327,12 @@ Plugin commands: `Documentation/nvme-{vendor}-{cmd}.txt`.
 
 ## CI
 
-13 GitHub Actions workflows in `../nvme-cli/.github/workflows/`. The file
+14 GitHub Actions workflows in `../nvme-cli/.github/workflows/`. The file
 names follow the sidebar names: `build-*`, `checks`/`checkpatch`,
 `nightly-*`, `release-*`. Key ones:
 - **build.yml** — matrix: Debian/Fedora/Tumbleweed × gcc/clang × debug/release
 - **build-freebsd.yml** — FreeBSD build and tests in a VM, also for PRs
+- **build-windows.yml** — MSYS2 builds and unit tests, x86_64 and ARM64
 - **checks.yml** — generated accessors and completions are current, and
   the libnvme ABI is compatible with the last release
 - **checkpatch.yml** — Linux kernel style (runs on every PR)
