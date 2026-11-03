@@ -327,14 +327,24 @@ Plugin commands: `Documentation/nvme-{vendor}-{cmd}.txt`.
 
 ## CI
 
-12 GitHub Actions workflows in `../nvme-cli/.github/workflows/`. Key ones:
+15 GitHub Actions workflows in `../nvme-cli/.github/workflows/`. Key ones:
 - **build.yml** — matrix: Debian/Fedora/Tumbleweed × gcc/clang × debug/release
 - **checkpatch.yml** — Linux kernel style (runs on every PR)
-- **coverage.yml** — codecov integration
-- **codeql.yml** — security scanning
 - **check-accessors.yml** — validates accessor generation is current
+- **abi-check.yml** — checks the libnvme ABI against the last release
+- **analyzer.yml** — clang static analyzer, nightly
+- **run-nightly-tests.yml** — blktests and nvme tests on a VM runner,
+  nightly; uploads the coverage reports to Codecov
+- **status-page.yml** — publishes the nightly results to GitHub Pages
 
-Pre-built static binary: `https://monom.org/linux-nvme/upload/nvme-cli-latest-x86_64`
+The nightly workflows run at about 21:00 UTC, off the full hour: GitHub
+started the runs at 01:00 UTC 5 to 7 hours late.
+
+`scripts/gh-workflow-runs` (this repo) lists the workflows with their
+last run and deletes all runs of a workflow. A workflow stays in the
+Actions sidebar while it has runs, also after its file is deleted.
+
+Pre-built static binary: `https://github.com/linux-nvme/nvme-cli/releases/download/nightly/nvme-cli-latest-x86_64`
 
 ---
 
