@@ -1,0 +1,166 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# usage: gh-workflow-runs [-R OWNER/REPO] list [-s]
+#        gh-workflow-runs [-R OWNER/REPO] [-n] [-y] delete WORKFLOW...
+#
+# Manage the workflow runs of a GitHub repository with gh.
+#
+# list prints every workflow GitHub knows: id, state, number of runs,
+# date of the last run, path. -s sorts by the last run, oldest first;
+# a workflow without runs comes first. A path that is not in
+# .github/workflows/ on the default branch is marked "stale". A
+# workflow without a file (stale, or dynamic/... for GitHub's own
+# features) stays in the Actions sidebar for as long as it has runs.
+#
+# delete removes all runs of each WORKFLOW (id, file name such as
+# build-nofabrics.yml, or full path). Once its file is deleted on the
+# default branch, GitHub leaves a workflow out of the list; give its
+# id then. Deleting the last run of a stale
+# workflow removes it from the sidebar. It asks first unless -y is
+# given; -n only shows what would be deleted.
+#
+# REPO defaults to linux-nvme/nvme-cli.
+#
+#   gh-workflow-runs list
+#   gh-workflow-runs -n delete fedora-latest.yml 299148714
+#   gh-workflow-runs delete fedora-latest.yml
+
+set -euo pipefail
+
+repo=linux-nvme/nvme-cli
+dry_run=0
+yes=0
+
+usage() {
+	sed -n '3,4s/^# //p' "$0" >&2
+	exit 2
+}
+
+while getopts "R:nyh" opt; do
+	case "$opt" in
+	R) repo=$OPTARG ;;
+	n) dry_run=1 ;;
+	y) yes=1 ;;
+	*) usage ;;
+	esac
+done
+shift $((OPTIND - 1))
+[ $# -ge 1 ] || usage
+cmd=$1
+shift
+
+workflows() {
+	gh api --paginate "repos/$repo/actions/workflows" \
+		-q '.workflows[] | [.id, .state, .path, .name] | @tsv'
+}
+
+run_info() {
+	gh api "repos/$repo/actions/workflows/$1/runs?per_page=1" \
+		-q '[.total_count, (.workflow_runs[0].created_at // "-")] | @tsv'
+}
+
+do_list() {
+	local sort_last=0 opt
+
+	OPTIND=1
+	while getopts "s" opt; do
+		case "$opt" in
+		s) sort_last=1 ;;
+		*) usage ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+	[ $# -eq 0 ] || usage
+
+	printf '%-10s %-8s %6s %-10s %s\n' ID STATE RUNS LAST PATH
+	if [ "$sort_last" = 1 ]; then
+		list_rows | LC_ALL=C sort -k4,4 -k1,1n
+	else
+		list_rows
+	fi
+}
+
+list_rows() {
+	local branch files id state path name runs last mark
+
+	branch=$(gh api "repos/$repo" -q .default_branch)
+	files=$(gh api "repos/$repo/contents/.github/workflows?ref=$branch" \
+		-q '.[].path')
+
+	workflows | while IFS=$'\t' read -r id state path name; do
+		IFS=$'\t' read -r runs last < <(run_info "$id")
+		mark=
+		case "$path" in
+		dynamic/*) ;;
+		*) grep -qxF "$path" <<<"$files" || mark=" (stale)" ;;
+		esac
+		printf '%-10s %-8s %6s %-10s %s%s\n' \
+			"$id" "$state" "$runs" "${last%%T*}" "$path" "$mark"
+	done
+}
+
+resolve() {
+	local arg=$1 id state path name
+
+	# The list leaves out workflows whose file was deleted on the
+	# default branch, but they can still have runs.
+	if [[ "$arg" =~ ^[0-9]+$ ]] &&
+	   gh api "repos/$repo/actions/workflows/$arg" \
+		-q '[.id, .path] | @tsv' 2>/dev/null; then
+		return 0
+	fi
+
+	while IFS=$'\t' read -r id state path name; do
+		if [ "$arg" = "$id" ] || [ "$arg" = "$path" ] ||
+		   [ "$arg" = "${path##*/}" ]; then
+			printf '%s\t%s\n' "$id" "$path"
+			return 0
+		fi
+	done < <(workflows)
+	echo "no workflow '$arg' in $repo" >&2
+
+	return 1
+}
+
+do_delete() {
+	local arg id path runs last ids=() paths=() total=0 i r answer
+
+	[ $# -ge 1 ] || usage
+	for arg in "$@"; do
+		IFS=$'\t' read -r id path < <(resolve "$arg") || exit 1
+		IFS=$'\t' read -r runs last < <(run_info "$id")
+		printf '%s  %s: %s runs, last %s\n' "$id" "$path" "$runs" \
+			"${last%%T*}"
+		ids+=("$id")
+		paths+=("$path")
+		total=$((total + runs))
+	done
+
+	if [ "$dry_run" = 1 ]; then
+		echo "dry run: would delete $total runs in $repo"
+		return 0
+	fi
+	if [ "$yes" != 1 ]; then
+		read -r -p "Delete $total runs in $repo? This can't be undone. [y/N] " answer
+		[ "$answer" = y ] || [ "$answer" = Y ] || exit 1
+	fi
+
+	for i in "${!ids[@]}"; do
+		gh api --paginate \
+			"repos/$repo/actions/workflows/${ids[$i]}/runs?per_page=100" \
+			-q '.workflow_runs[].id' |
+		while read -r r; do
+			if gh api -X DELETE "repos/$repo/actions/runs/$r" >/dev/null; then
+				echo "${paths[$i]}: deleted run $r"
+			else
+				echo "${paths[$i]}: failed to delete run $r" >&2
+			fi
+		done
+	done
+}
+
+case "$cmd" in
+list) do_list "$@" ;;
+delete) do_delete "$@" ;;
+*) usage ;;
+esac
